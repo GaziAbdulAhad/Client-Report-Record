@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>কাস্টমার ইস্যু ট্র্যাকার</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f7f6;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .form-container {
+      background: #ffffff;
+      padding: 25px;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 450px;
+    }
+    h2 { text-align: center; color: #333; margin-bottom: 20px; }
+    .input-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; color: #555; font-weight: bold; }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .select-row { display: flex; gap: 6px; }
+    .select-row select { flex: 1; min-width: 0; }
+    .icon-btn {
+      width: 42px;
+      flex: none;
+      padding: 0;
+      font-size: 20px;
+      line-height: 1;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .add-btn { background-color: #28a745; }
+    .add-btn:hover { background-color: #1e7e34; }
+    .del-btn { background-color: #dc3545; }
+    .del-btn:hover { background-color: #b02a37; }
+    button[type="submit"] {
+      width: 100%;
+      padding: 12px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    button[type="submit"]:hover { background-color: #0056b3; }
+    button[type="submit"]:disabled { background-color: #8ab8ee; cursor: not-allowed; }
+    #status { margin-top: 15px; text-align: center; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<div class="form-container">
+  <h2>Client Report Record</h2>
+  <form id="issueForm">
+    <div class="input-group">
+      <label for="customerId">Customer ID:</label>
+      <input type="text" id="customerId" name="customerId" required>
+    </div>
+
+    <div class="input-group" id="openBox" style="display:none;background:#fff8e1;padding:10px;border-radius:4px;">
+      <label for="openRecord">এই Customer-এর খোলা রেকর্ড (End Time নেই):</label>
+      <select id="openRecord"><option value="">➕ নতুন রেকর্ড যোগ করুন</option></select>
+    </div>
+
+    <div class="input-group">
+      <label for="issues">Issues:</label>
+      <div class="select-row">
+        <select id="issues" name="issues" required></select>
+        <button type="button" class="icon-btn add-btn" id="issuesAdd" title="নতুন Issue যোগ করুন">+</button>
+        <button type="button" class="icon-btn del-btn" id="issuesDel" title="সিলেক্ট করা Issue মুছুন">−</button>
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label for="eventTime">Event Time:</label>
+      <input type="datetime-local" id="eventTime" name="eventTime" required>
+    </div>
+
+    <div class="input-group">
+      <label for="endTime">End Time:</label>
+      <input type="datetime-local" id="endTime" name="endTime">
+    </div>
+
+    <div class="input-group">
+      <label for="downTime">Down Time (auto calculate hobe):</label>
+      <input type="text" id="downTime" name="downTime">
+    </div>
+
+    <div class="input-group">
+      <label for="currentStatus">Current Status:</label>
+      <select id="currentStatus" name="currentStatus">
+        <option value="Open">Open</option>
+        <option value="In Progress">In Progress</option>
+        <option value="Resolved">Resolved</option>
+        <option value="Closed">Closed</option>
+      </select>
+    </div>
+
+    <div class="input-group">
+      <label for="remarks">Remarks:</label>
+      <div class="select-row">
+        <select id="remarks" name="remarks"></select>
+        <button type="button" class="icon-btn add-btn" id="remarksAdd" title="নতুন নাম যোগ করুন">+</button>
+        <button type="button" class="icon-btn del-btn" id="remarksDel" title="সিলেক্ট করা নাম মুছুন">−</button>
+      </div>
+    </div>
+
+    <button type="submit" id="submitBtn">Submit Record</button>
+  </form>
+  <div id="status"></div>
+</div>
+
+<script>
+  const scriptURL = 'https://script.google.com/macros/s/AKfycbytA56PutnLBwFun_IVGhzrzcVlEf1uxFW-x3ck11AqQQobr3rwhZpVhCXLpGuJa3TDrQ/exec';
+
+  const form = document.getElementById('issueForm');
+  const statusText = document.getElementById('status');
+  const submitBtn = document.getElementById('submitBtn');
+  const eventTime = document.getElementById('eventTime');
+  const endTime = document.getElementById('endTime');
+  const downTime = document.getElementById('downTime');
+
+  // ---------- Default list ----------
+  const DEFAULT_ISSUES = [
+    'Onu red light', 'Onu offline', 'Onu Router offline', 'Dbm High!',
+    'Fiber wire cut', 'Connected no internet issue', 'onu no power',
+    'router issue', 'Onu Online Router Offline', 'Onu Only power LED visible',
+    'router red light', 'Intermittent Disconnection', 'room shifting',
+    'client end check korte hobe', 'Short Cable Issue', 'router to tv connection'
+  ];
+  const DEFAULT_REMARKS = [
+    'Ali-Nur', 'Forid', 'mamun', 'sonia', 'Ahad', 'Didar', 'Choya', 'amena'
+  ];
+
+  // ---------- Dropdown + / − ----------
+  function loadList(key, defaults) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(key));
+      if (Array.isArray(saved)) return saved;
+    } catch (e) {}
+    return defaults.slice();
+  }
+  function saveList(key, list) {
+    try { localStorage.setItem(key, JSON.stringify(list)); } catch (e) {}
+  }
+
+  function setupDropdown(selectId, addId, delId, storageKey, defaults, noun) {
+    const select = document.getElementById(selectId);
+    let list = loadList(storageKey, defaults);
+
+    function render(selected) {
+      select.innerHTML = '';
+      const ph = document.createElement('option');
+      ph.value = '';
+      ph.textContent = '-- Select --';
+      select.appendChild(ph);
+      list.forEach(item => {
+        const o = document.createElement('option');
+        o.value = item;
+        o.textContent = item;
+        select.appendChild(o);
+      });
+      select.value = selected || '';
+    }
+
+    document.getElementById(addId).addEventListener('click', () => {
+      const val = (prompt('নতুন ' + noun + ' লিখুন:') || '').trim();
+      if (!val) return;
+      const exists = list.find(x => x.toLowerCase() === val.toLowerCase());
+      if (exists) {
+        alert('এটি আগে থেকেই আছে।');
+        render(exists);
+        return;
+      }
+      list.push(val);
+      saveList(storageKey, list);
+      render(val);
+    });
+
+    document.getElementById(delId).addEventListener('click', () => {
+      const val = select.value;
+      if (!val) { alert('আগে মুছতে চাওয়া ' + noun + ' সিলেক্ট করুন।'); return; }
+      if (!confirm('"' + val + '" মুছে ফেলবেন?')) return;
+      list = list.filter(x => x !== val);
+      saveList(storageKey, list);
+      render('');
+    });
+
+    render('');
+  }
+
+  setupDropdown('issues', 'issuesAdd', 'issuesDel', 'issueOptions', DEFAULT_ISSUES, 'Issue');
+  setupDropdown('remarks', 'remarksAdd', 'remarksDel', 'remarkOptions', DEFAULT_REMARKS, 'নাম');
+
+  // ---------- Down Time auto calculate ----------
+  function updateDownTime() {
+    if (eventTime.value && endTime.value) {
+      const diff = new Date(endTime.value) - new Date(eventTime.value);
+      if (diff < 0) {
+        endTime.setCustomValidity('End Time, Event Time-er por hote hobe');
+        endTime.reportValidity();
+        downTime.value = '';
+        return;
+      }
+      endTime.setCustomValidity('');
+      const mins = Math.round(diff / 60000);
+      downTime.value = Math.floor(mins / 60) + ' hours ' + (mins % 60) + ' minutes';
+    } else {
+      endTime.setCustomValidity('');
+    }
+  }
+  eventTime.addEventListener('change', updateDownTime);
+  endTime.addEventListener('change', updateDownTime);
+
+  // ---------- Purano open record khoja ----------
+  const openBox = document.getElementById('openBox');
+  const openSel = document.getElementById('openRecord');
+  const cid = document.getElementById('customerId');
+  const issuesSel = document.getElementById('issues');
+  const NEW_OPT = '<option value="">➕ নতুন রেকর্ড যোগ করুন</option>';
+  let openRecords = [];
+
+  function setUpdateMode(on) {
+    eventTime.readOnly = on;
+    issuesSel.disabled = on;
+  }
+  function resetOpenBox() {
+    openRecords = [];
+    openSel.innerHTML = NEW_OPT;
+    openBox.style.display = 'none';
+    setUpdateMode(false);
+  }
+
+  cid.addEventListener('change', async () => {
+    resetOpenBox();
+    const id = cid.value.trim();
+    if (!id) return;
+    try {
+      const r = await fetch(scriptURL + '?action=find&customerId=' + encodeURIComponent(id), { cache: 'no-store' });
+      openRecords = await r.json();
+      openRecords.forEach((rec, i) => {
+        const o = document.createElement('option');
+        o.value = i;
+        o.textContent = rec.eventTime.replace('T', ' ') + ' — ' + rec.issue;
+        openSel.appendChild(o);
+      });
+      if (openRecords.length) openBox.style.display = 'block';
+    } catch (err) { console.error(err); }
+  });
+
+  openSel.addEventListener('change', () => {
+    const rec = openRecords[openSel.value];
+    if (!rec) { setUpdateMode(false); return; }
+    setUpdateMode(true);
+    eventTime.value = rec.eventTime;
+    if (![...issuesSel.options].some(o => o.value === rec.issue)) issuesSel.add(new Option(rec.issue, rec.issue));
+    issuesSel.value = rec.issue;
+    document.getElementById('currentStatus').value = rec.status || 'Open';
+    updateDownTime();
+  });
+
+  // ---------- Submit ----------
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const rec = openRecords[openSel.value];
+    const data = new URLSearchParams(new FormData(form));
+    data.set('customerId', cid.value.trim());
+    data.set('eventTime', eventTime.value);
+    if (rec) {
+      data.set('action', 'update');
+      data.set('row', rec.row);
+      data.set('issues', rec.issue);
+    } else {
+      data.set('action', 'insert');
+    }
+
+    submitBtn.disabled = true;
+    statusText.style.color = 'blue';
+    statusText.textContent = 'ডেটা সেভ হচ্ছে...';
+    try {
+      const r = await fetch(scriptURL, { method: 'POST', body: data });
+      const t = await r.text();
+      if (!t.startsWith('Success')) throw new Error(t);
+      statusText.style.color = 'green';
+      statusText.textContent = rec ? 'পুরনো রেকর্ড আপডেট হয়েছে!' : 'সফলভাবে রেকর্ড যোগ হয়েছে!';
+      form.reset();
+      endTime.setCustomValidity('');
+      resetOpenBox();
+    } catch (error) {
+      statusText.style.color = 'red';
+      statusText.textContent = 'ত্রুটি হয়েছে: ' + error.message;
+      console.error('Error!', error);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+</script>
+
+</body>
+</html>
