@@ -64,13 +64,22 @@
     button[type="submit"]:hover { background-color: #0056b3; }
     button[type="submit"]:disabled { background-color: #8ab8ee; cursor: not-allowed; }
     #status { margin-top: 15px; text-align: center; font-weight: bold; }
+      .rec { border: 1px solid #ddd; border-radius: 6px; padding: 8px; margin-top: 8px; font-size: 13px; word-break: break-word; }
+    .rec .acts { margin-top: 6px; display: flex; gap: 6px; }
+    .rec button { padding: 5px 12px; border: none; border-radius: 4px; color: #fff; cursor: pointer; }
   </style>
 </head>
 <body>
 
 <div class="form-container">
-  <h2>Client Report Record</h2>
+  <h2>Issue Log Form</h2>
   <form id="issueForm">
+    <div class="input-group" style="background:#eef6ff;padding:10px;border-radius:4px;">
+      <label for="pasteBox">Customer info paste/upload korun (auto fill hobe):</label>
+      <textarea id="pasteBox" rows="4" placeholder="Customer ID: 250484&#10;Username: ...&#10;Mobile: ..."></textarea>
+      <input type="file" id="fileIn" accept=".txt" style="margin-top:6px;">
+    </div>
+
     <div class="input-group">
       <label for="customerId">Customer ID <span style="color:red">*</span>:</label>
       <input type="text" id="customerId" name="customerId" required>
@@ -165,12 +174,21 @@
     </div>
 
     <button type="submit" id="submitBtn">Submit Record</button>
+    <button type="button" id="cancelEdit" style="display:none;margin-top:8px;width:100%;padding:10px;background:#6c757d;color:#fff;border:none;border-radius:4px;cursor:pointer;">Cancel Edit</button>
   </form>
   <div id="status"></div>
+
+  <hr style="margin:25px 0;">
+  <h3 style="text-align:center;color:#333;">Submit kora record</h3>
+  <div class="select-row">
+    <input type="text" id="searchBox" placeholder="Customer ID / Name diye khujun" style="flex:1;min-width:0;">
+    <button type="button" class="icon-btn add-btn" id="searchBtn" style="width:70px;font-size:14px;">Search</button>
+  </div>
+  <div id="recList"></div>
 </div>
 
 <script>
-  const scriptURL = 'https://script.google.com/macros/s/AKfycbwq_Y-u0PhfuJTZDRzkKzIc9x8BhjqVeY1gLQyY4fBwUi_prSGehfECQqvEYZzPxtK0zw/exec';
+  const scriptURL = 'https://script.google.com/macros/s/AKfycbxB92HTRqS8pVSuvlCdkugR1_xltrxbLkspJO3PQLMpVi3mBZBdkMxcVz8KsXaaj4BUxg/exec';
 
   const form = document.getElementById('issueForm');
   const statusText = document.getElementById('status');
@@ -278,6 +296,7 @@
   const issuesSel = document.getElementById('issues');
   const NEW_OPT = '<option value="">➕ নতুন রেকর্ড যোগ করুন</option>';
   let openRecords = [];
+  let editRow = null, editOrigId = '';
 
   const REQUIRED_NEW = ['username', 'mobile', 'address', 'onuRx'];
   function setUpdateMode(on) {
@@ -293,12 +312,14 @@
   }
 
   cid.addEventListener('change', async () => {
+    if (editRow) return;
     resetOpenBox();
     const id = cid.value.trim();
     if (!id) return;
     try {
       const r = await fetch(scriptURL + '?action=find&customerId=' + encodeURIComponent(id), { cache: 'no-store' });
-      openRecords = await r.json();
+      const found = await r.json();
+      openRecords = Array.isArray(found) ? found : [];
       openRecords.forEach((rec, i) => {
         const o = document.createElement('option');
         o.value = i;
@@ -320,14 +341,146 @@
     updateDownTime();
   });
 
+  // ---------- Paste / upload diye auto fill ----------
+  const pasteBox = document.getElementById('pasteBox');
+  const MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  const LABELS = { 'customer id': 'customerId', 'customer': 'customerId', 'username': 'username', 'user name': 'username',
+    'password': 'password', 'name': 'name', 'package': 'package', 'expiry date': 'expiryDate', 'expiry': 'expiryDate',
+    'mobile': 'mobile', 'phone': 'mobile', 'address': 'address', 'onu rx power': 'onuRx', 'onu rx': 'onuRx' };
+
+  function toIsoDate(s) {
+    const m = s.match(/(\d{1,2})[\/\-\s]([A-Za-z]{3,9}|\d{1,2})[\/\-\s](\d{2,4})/);
+    if (!m) return '';
+    const mon = isNaN(m[2]) ? MON[m[2].slice(0, 3).toLowerCase()] : +m[2];
+    let y = +m[3]; if (y < 100) y += 2000;
+    return mon ? y + '-' + String(mon).padStart(2, '0') + '-' + String(m[1]).padStart(2, '0') : '';
+  }
+
+  function fillFromText(text) {
+    let n = 0;
+    text.split(/\r?\n/).forEach(line => {
+      const m = line.match(/^\s*([A-Za-z ]+?)\s*:\s*(.*)$/);
+      if (!m) return;
+      const id = LABELS[m[1].trim().toLowerCase()];
+      if (!id) return;
+      let v = m[2].replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
+      if (id === 'expiryDate') v = toIsoDate(v);
+      if (v && v !== '-') { document.getElementById(id).value = v; n++; }
+    });
+    if (n) {
+      statusText.style.color = 'green';
+      statusText.textContent = n + ' ta field auto fill hoyeche';
+      if (!editRow) cid.dispatchEvent(new Event('change'));
+    }
+  }
+  pasteBox.addEventListener('input', () => fillFromText(pasteBox.value));
+  document.getElementById('fileIn').addEventListener('change', async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    pasteBox.value = await f.text();
+    fillFromText(pasteBox.value);
+  });
+
+  // ---------- Submit kora record: list / edit / delete ----------
+  const recList = document.getElementById('recList');
+  const searchBox = document.getElementById('searchBox');
+  const cancelBtn = document.getElementById('cancelEdit');
+  const pwd = document.getElementById('password');
+
+  function mkBtn(t, bg, fn) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = t; b.style.background = bg; b.onclick = fn;
+    return b;
+  }
+  function setSel(sel, val) {
+    if (val && ![...sel.options].some(o => o.value === val)) sel.add(new Option(val, val));
+    sel.value = val || '';
+  }
+
+  async function loadList() {
+    recList.textContent = 'লোড হচ্ছে...';
+    try {
+      const r = await fetch(scriptURL + '?action=list&q=' + encodeURIComponent(searchBox.value.trim()), { cache: 'no-store' });
+      const list = await r.json();
+      if (!Array.isArray(list)) throw new Error('Server theke ashol list ashe nai: ' + JSON.stringify(list).slice(0, 150));
+      recList.textContent = '';
+      if (!list.length) { recList.textContent = 'কোনো রেকর্ড পাওয়া যায়নি।'; return; }
+      list.forEach(rec => {
+        const div = document.createElement('div');
+        div.className = 'rec';
+        div.textContent = [rec.customerId, rec.name, rec.eventTime.replace('T', ' '), rec.issue, rec.status].filter(Boolean).join(' • ');
+        const acts = document.createElement('div');
+        acts.className = 'acts';
+        acts.append(mkBtn('Edit', '#007bff', () => startEdit(rec)), mkBtn('Delete', '#dc3545', () => deleteRec(rec)));
+        div.appendChild(acts);
+        recList.appendChild(div);
+      });
+    } catch (err) { recList.textContent = 'লিস্ট লোড হয়নি: ' + err.message; }
+  }
+
+  function startEdit(rec) {
+    resetOpenBox();
+    editRow = rec.row; editOrigId = rec.customerId;
+    cid.value = rec.customerId;
+    ['username', 'name', 'package', 'expiryDate', 'mobile', 'address', 'onuRx'].forEach(id => { document.getElementById(id).value = rec[id] || ''; });
+    pwd.value = '';
+    pwd.placeholder = 'ফাঁকা রাখলে আগের পাসওয়ার্ড থাকবে';
+    setSel(issuesSel, rec.issue);
+    eventTime.value = rec.eventTime; endTime.value = rec.endTime; downTime.value = rec.downTime;
+    document.getElementById('currentStatus').value = rec.status || 'Open';
+    setSel(document.getElementById('remarks'), rec.remarks);
+    document.getElementById('submitBtn').textContent = 'Save Changes';
+    cancelBtn.style.display = 'block';
+    statusText.style.color = '#b45309';
+    statusText.textContent = 'Edit mode: ' + rec.customerId;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function cancelEdit() {
+    editRow = null; editOrigId = '';
+    form.reset();
+    endTime.setCustomValidity('');
+    document.getElementById('submitBtn').textContent = 'Submit Record';
+    cancelBtn.style.display = 'none';
+    pwd.placeholder = '';
+    statusText.textContent = '';
+    resetOpenBox();
+  }
+  cancelBtn.addEventListener('click', cancelEdit);
+
+  async function deleteRec(rec) {
+    if (!confirm(rec.customerId + ' (' + rec.eventTime.replace('T', ' ') + ') রেকর্ডটি মুছে ফেলবেন?')) return;
+    statusText.style.color = 'blue';
+    statusText.textContent = 'মুছছে...';
+    try {
+      const r = await fetch(scriptURL, { method: 'POST', body: new URLSearchParams({
+        action: 'delete', row: rec.row, customerId: rec.customerId, origId: rec.customerId }) });
+      const t = await r.text();
+      if (!t.startsWith('Success')) throw new Error(t);
+      statusText.style.color = 'green';
+      statusText.textContent = 'রেকর্ড মুছে ফেলা হয়েছে';
+      loadList();
+    } catch (err) {
+      statusText.style.color = 'red';
+      statusText.textContent = 'ত্রুটি: ' + err.message;
+    }
+  }
+  document.getElementById('searchBtn').addEventListener('click', loadList);
+  searchBox.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); loadList(); } });
+
   // ---------- Submit ----------
   form.addEventListener('submit', async e => {
     e.preventDefault();
-    const rec = openRecords[openSel.value];
+    const rec = editRow ? null : openRecords[openSel.value];
     const data = new URLSearchParams(new FormData(form));
     data.set('customerId', cid.value.trim());
     data.set('eventTime', eventTime.value);
-    if (rec) {
+    if (editRow) {
+      data.set('action', 'edit');
+      data.set('row', editRow);
+      data.set('origId', editOrigId);
+      data.set('issues', issuesSel.value);
+    } else if (rec) {
       data.set('action', 'update');
       data.set('row', rec.row);
       data.set('issues', rec.issue);
@@ -342,11 +495,12 @@
       const r = await fetch(scriptURL, { method: 'POST', body: data });
       const t = await r.text();
       if (!t.startsWith('Success')) throw new Error(t);
+      const msg = editRow ? 'রেকর্ড এডিট হয়েছে!' : rec ? 'পুরনো রেকর্ড আপডেট হয়েছে!' : 'সফলভাবে রেকর্ড যোগ হয়েছে!';
+      if (editRow) cancelEdit();
+      else { form.reset(); endTime.setCustomValidity(''); resetOpenBox(); }
       statusText.style.color = 'green';
-      statusText.textContent = rec ? 'পুরনো রেকর্ড আপডেট হয়েছে!' : 'সফলভাবে রেকর্ড যোগ হয়েছে!';
-      form.reset();
-      endTime.setCustomValidity('');
-      resetOpenBox();
+      statusText.textContent = msg;
+      loadList();
     } catch (error) {
       statusText.style.color = 'red';
       statusText.textContent = 'ত্রুটি হয়েছে: ' + error.message;
@@ -355,6 +509,8 @@
       submitBtn.disabled = false;
     }
   });
+
+  loadList();
 </script>
 
 </body>
