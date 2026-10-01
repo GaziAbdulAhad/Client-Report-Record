@@ -188,7 +188,7 @@
 </div>
 
 <script>
-  const scriptURL = 'https://script.google.com/macros/s/AKfycbz8Ks2mVb3nwiApuZRUTsUn5cxqOmKd0fd5urZzU51Iz8QirBSELuYNJ9ZfqBGKeYKaMw/exec';
+  const scriptURL = 'https://script.google.com/macros/s/AKfycbxB92HTRqS8pVSuvlCdkugR1_xltrxbLkspJO3PQLMpVi3mBZBdkMxcVz8KsXaaj4BUxg/exec';
 
   const form = document.getElementById('issueForm');
   const statusText = document.getElementById('status');
@@ -397,7 +397,7 @@
     sel.value = val || '';
   }
 
-  async function loadList() {
+  async function loadRecords() {
     recList.textContent = 'লোড হচ্ছে...';
     try {
       const r = await fetch(scriptURL + '?action=list&q=' + encodeURIComponent(searchBox.value.trim()), { cache: 'no-store' });
@@ -459,14 +459,14 @@
       if (!t.startsWith('Success')) throw new Error(t);
       statusText.style.color = 'green';
       statusText.textContent = 'রেকর্ড মুছে ফেলা হয়েছে';
-      loadList();
+      loadRecords();
     } catch (err) {
       statusText.style.color = 'red';
       statusText.textContent = 'ত্রুটি: ' + err.message;
     }
   }
-  document.getElementById('searchBtn').addEventListener('click', loadList);
-  searchBox.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); loadList(); } });
+  document.getElementById('searchBtn').addEventListener('click', loadRecords);
+  searchBox.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); loadRecords(); } });
 
   // ---------- Submit ----------
   form.addEventListener('submit', async e => {
@@ -500,7 +500,7 @@
       else { form.reset(); endTime.setCustomValidity(''); resetOpenBox(); }
       statusText.style.color = 'green';
       statusText.textContent = msg;
-      loadList();
+      loadRecords();
     } catch (error) {
       statusText.style.color = 'red';
       statusText.textContent = 'ত্রুটি হয়েছে: ' + error.message;
@@ -510,7 +510,7 @@
     }
   });
 
-  loadList();
+  loadRecords();
 </script>
 
 </body>
